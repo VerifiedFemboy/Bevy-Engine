@@ -1,4 +1,4 @@
-use bevy::{app::{App, PluginGroup, Update}, window::{Window, WindowPlugin}, DefaultPlugins};
+use bevy::{app::{App, PluginGroup}, window::{Window, WindowPlugin}, DefaultPlugins};
 use camera::CameraPlugin;
 use player::PlayerPlugin;
 
@@ -34,6 +34,8 @@ mod camera {
 mod player {
     use bevy::prelude::*;
 
+    use crate::bullet::Bullet;
+
     #[derive(Component)]
     pub struct Player;
 
@@ -42,9 +44,7 @@ mod player {
     impl Plugin for PlayerPlugin {
         fn build(&self, app: &mut App) {
             app.add_systems(Startup, setup);
-            app.add_event::<ShootEvent>();
-            // app.add_systems(Update, (movement_input, send_shoot_ev));
-            
+            app.add_systems(Update, (movement_input, mouse_input));
         }
     }
 
@@ -72,25 +72,35 @@ mod player {
             if input.pressed(KeyCode::KeyA) {
                 transform.translation.x -= 2.;
             }
-
             if input.pressed(KeyCode::KeyD) {
                 transform.translation.x += 2.;
             }
         }
     }
 
-    #[derive(Event)]
-    struct ShootEvent(String);
-
-    fn send_shoot_ev(input: ButtonInput<MouseButton>, mut events: EventWriter<ShootEvent>) {
+    fn mouse_input(
+        input: Res<ButtonInput<MouseButton>>, 
+        mut commands: Commands, player_position: Query<&Transform, With<Player>>, 
+        mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<ColorMaterial>>
+    ) {
         if input.just_pressed(MouseButton::Left) {
-            events.send(ShootEvent("jaja".to_string()));
+            commands.spawn(
+            (
+                Bullet,
+                Transform::from_translation(player_position.iter().next().unwrap().translation),
+                Mesh2d(meshes.add(Circle::new(5.))),
+                MeshMaterial2d(materials.add(Color::srgb(0.5, 0.5, 1.))),
+            ));
         }
     }
+}
 
-    fn read_shoot_ev(mut event: EventReader<ShootEvent>) {
-        for ev in event.read() {
-            println!("shot")
-        }
-    }
+mod bullet {
+    use bevy::prelude::Component;
+
+
+    #[derive(Component)]
+    pub struct Bullet;
+
+    
 }
