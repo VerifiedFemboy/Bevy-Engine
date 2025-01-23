@@ -1,4 +1,4 @@
-use bevy::{app::{App, PluginGroup, Startup}, asset::Assets, color::Color, core_pipeline::bloom::Bloom, prelude::{Camera, Camera2d, Circle, Commands, Component, IntoSystemConfigs, Mesh, Mesh2d, ResMut, Transform}, sprite::{ColorMaterial, MeshMaterial2d}, window::{Window, WindowPlugin}, DefaultPlugins};
+use bevy::{app::{App, PluginGroup, Startup}, asset::Assets, color::Color, core_pipeline::bloom::Bloom, prelude::{Camera, Camera2d, Circle, Commands, Component, IntoSystemConfigs, Mesh, Mesh2d, ResMut, Text, Transform}, sprite::{ColorMaterial, MeshMaterial2d}, text::Text2d, ui::Node, window::{Window, WindowPlugin}, DefaultPlugins};
 
 fn main() {
     App::new().add_plugins(DefaultPlugins::set(DefaultPlugins, 
@@ -9,7 +9,7 @@ fn main() {
             }),
             ..Default::default()
         }))
-        .add_systems(Startup, (spawn_camera, background, spawn_objects).chain())
+        .add_systems(Startup, (spawn_camera, date_spawn_text, background, spawn_objects).chain())
         .run();
 }
 
@@ -84,6 +84,12 @@ fn spawn_objects(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut m
     for planet in planets {
         commands.spawn(planet);
     }
+}
+
+fn date_spawn_text(mut commands: Commands) {
+    commands.spawn((Text2d("Jaja".to_string()),
+        Transform::from_xyz(-400., 300., 0.),
+    ));
 }
 
 #[derive(Component)]
