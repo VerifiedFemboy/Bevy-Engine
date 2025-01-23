@@ -27,9 +27,10 @@ fn background(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut mate
 fn spawn_camera(mut commands: Commands) {
     commands.spawn((Camera2d, Camera {
         hdr: true,
-        
         ..Default::default()
-    }, Bloom::NATURAL));
+    }, Bloom::NATURAL,
+        Transform::from_xyz(0., 0., 1000.) //TODO: SCALE THE CAMERA TO ZOOM OUT
+    ));
 }
 
 fn spawn_objects(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<ColorMaterial>>) {
@@ -104,10 +105,10 @@ fn spawn_objects(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut m
             acceleration: (0., 0.),
         },
             Mesh2d(meshes.add(Circle::new(10.))),
-            MeshMaterial2d(materials.add(Color::srgb(0.0, 0.5, 0.))),
+            MeshMaterial2d(materials.add(Color::srgb(0.8, 0.7, 0.2))),
             Transform::from_xyz(778.6, 0., 1.)
         ),
-        ];
+    ];
 
     for planet in planets {
         commands.spawn(planet);
@@ -115,8 +116,10 @@ fn spawn_objects(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut m
 }
 
 fn date_spawn_text(mut commands: Commands) {
-    commands.spawn((Text2d(format!("Date: {}\nTime: {}", get_current_date_and_time().0, get_current_date_and_time().1)),
-        Transform::from_xyz(-400., 300., 0.),
+    commands.spawn(
+    (
+        Text2d(format!("Date: {}\nTime: {}", get_current_date_and_time().0, get_current_date_and_time().1)),
+        Transform::from_xyz(-300.0, 200.0, 0.0),
     ));
 }
 
