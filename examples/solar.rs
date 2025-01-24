@@ -1,4 +1,4 @@
-use bevy::{app::{App, PluginGroup, Startup, Update}, asset::Assets, color::Color, core_pipeline::bloom::Bloom, prelude::{Camera, Camera2d, Circle, Commands, Component, IntoSystemConfigs, Mesh, Mesh2d, Query, ResMut, Transform}, sprite::{ColorMaterial, MeshMaterial2d}, text::Text2d, window::{Window, WindowPlugin, WindowResolution}, DefaultPlugins};
+use bevy::{app::{App, PluginGroup, Startup, Update}, asset::Assets, color::Color, core_pipeline::bloom::Bloom, input::ButtonInput, prelude::{BuildChildren, Camera, Camera2d, ChildBuild, Circle, Commands, Component, IntoSystemConfigs, KeyCode, Mesh, Mesh2d, OrthographicProjection, Query, Res, ResMut, Transform, With}, sprite::{ColorMaterial, MeshMaterial2d}, text::{Text2d, TextFont}, window::{Window, WindowPlugin, WindowResolution}, DefaultPlugins};
 
 fn main() {
     App::new().add_plugins(DefaultPlugins::set(DefaultPlugins, 
@@ -12,7 +12,7 @@ fn main() {
             ..Default::default()
         }))
         .add_systems(Startup, (spawn_camera, date_spawn_text, background, spawn_objects).chain())
-        .add_systems(Update, (update_date_text).chain())
+        .add_systems(Update, (update_date_text, input_keys).chain())
         .run();
 }
 
@@ -24,16 +24,24 @@ fn background(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut mate
     );
 }
 
+#[derive(Component)]
+struct CameraEnt;
+
 fn spawn_camera(mut commands: Commands) {
     commands.spawn((Camera2d, Camera {
         hdr: true,
         ..Default::default()
     }, Bloom::NATURAL,
-        Transform::from_xyz(0., 0., 1000.) //TODO: SCALE THE CAMERA TO ZOOM OUT
+        Transform::from_xyz(0., 0., 1000.), //TODO: SCALE THE CAMERA TO ZOOM OUT
+        CameraEnt
     ));
 }
 
-fn spawn_objects(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<ColorMaterial>>) {
+fn spawn_objects(
+    mut commands: Commands, 
+    mut meshes: ResMut<Assets<Mesh>>, 
+    mut materials: ResMut<Assets<ColorMaterial>>
+) {
     commands.spawn((Object {
         name: "Sun".to_string(),
         kind: ObjectKind::Star,
@@ -42,7 +50,7 @@ fn spawn_objects(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut m
         velocity: (0., 0.),
         acceleration: (0., 0.),
     },
-        Mesh2d(meshes.add(Circle::new(20.))),
+        Mesh2d(meshes.add(Circle::new(30.))),
         MeshMaterial2d(materials.add(Color::srgb(1., 1., 0.))),
         Transform::from_xyz(0., 0., 1.0)
     ));
@@ -108,22 +116,66 @@ fn spawn_objects(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut m
             MeshMaterial2d(materials.add(Color::srgb(0.8, 0.7, 0.2))),
             Transform::from_xyz(778.6, 0., 1.)
         ),
+        (Object {
+            name: "Saturn".to_string(),
+            kind: ObjectKind::Planet,
+            mass: 5.68e26,
+            radius: 5.8232e7,
+            velocity: (0., 9.69e3),
+            acceleration: (0., 0.),
+        },
+            Mesh2d(meshes.add(Circle::new(8.))),
+            MeshMaterial2d(materials.add(Color::srgb(0.9, 0.8, 0.2))),
+            Transform::from_xyz(1433.5, 0., 1.)
+        ),
+        (Object {
+            name: "Uranus".to_string(),
+            kind: ObjectKind::Planet,
+            mass: 8.68e25,
+            radius: 2.5362e7,
+            velocity: (0., 6.81e3),
+            acceleration: (0., 0.),
+        },
+            Mesh2d(meshes.add(Circle::new(6.))),
+            MeshMaterial2d(materials.add(Color::srgb(0.5, 0.8, 0.9))),
+            Transform::from_xyz(2872.5, 0., 1.)
+        ),
+        (Object {
+            name: "Neptune".to_string(),
+            kind: ObjectKind::Planet,
+            mass: 1.02e26,
+            radius: 2.4622e7,
+            velocity: (0., 5.43e3),
+            acceleration: (0., 0.),
+        },
+            Mesh2d(meshes.add(Circle::new(6.))),
+            MeshMaterial2d(materials.add(Color::srgb(0.2, 0.3, 0.9))),
+            Transform::from_xyz(4495.1, 0., 1.)
+        ),
     ];
 
     for planet in planets {
-        commands.spawn(planet);
+        let name = planet.0.name.clone();
+        commands.spawn(planet
+        ).with_children(|parent| {
+            parent.spawn((Text2d(name), TextFont {font_size: 6., ..Default::default()}, Transform::from_xyz(0., 5., 0.1)));
+        });
     }
 }
+
+#[derive(Component)]
+struct DateText;
 
 fn date_spawn_text(mut commands: Commands) {
     commands.spawn(
     (
         Text2d(format!("Date: {}\nTime: {}", get_current_date_and_time().0, get_current_date_and_time().1)),
         Transform::from_xyz(-300.0, 200.0, 0.0),
+        DateText
     ));
 }
 
-fn update_date_text(mut query: Query<&mut Text2d>) {
+fn update_date_text(mut query: Query<&mut Text2d, With<DateText>>) {
     for mut text in query.iter_mut() {
         text.0 = format!("Date: {}\nTime: {}", get_current_date_and_time().0, get_current_date_and_time().1);
     }
@@ -150,4 +202,36 @@ fn get_current_date_and_time() -> (String, String) {
     let date = chrono::Utc::now().format("%m-%d-%Y").to_string();
     let time = chrono::Utc::now().format("%I:%M:%S %p").to_string();
     (date, time)
+}
+
+fn input_keys(
+    key: Res<ButtonInput<KeyCode>>, 
+    mut projection_query: Query<&mut OrthographicProjection, With<CameraEnt>>,
+    mut position_query: Query<&mut Transform, With<CameraEnt>>,
+) {
+    let mut projection = projection_query.single_mut();
+    if key.pressed(KeyCode::ArrowUp) {
+        projection.scale *= 0.9;
+    }
+    if key.pressed(KeyCode::ArrowDown) {
+        projection.scale /= 0.9;
+    }
+
+    let mut position = position_query.single_mut();
+
+    if key.pressed(KeyCode::KeyW) {
+        position.translation.y += 10.0;
+    }
+    
+    if key.pressed(KeyCode::KeyS) {
+        position.translation.y -= 10.0;
+    }
+
+    if key.pressed(KeyCode::KeyA) {
+        position.translation.x -= 10.0;
+    }
+
+    if key.pressed(KeyCode::KeyD) {
+        position.translation.x += 10.0;
+    }
 }
