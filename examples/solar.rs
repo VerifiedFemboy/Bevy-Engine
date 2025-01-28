@@ -1,11 +1,4 @@
-use bevy::{app::{App, PluginGroup, Startup, Update}, 
-asset::Assets, color::Color, core_pipeline::bloom::Bloom, 
-input::{mouse::MouseWheel, ButtonInput}, math::Vec3, 
-prelude::{Annulus, BuildChildren, Camera, Camera2d, ChildBuild, Circle, 
-    Commands, Component, EventReader, IntoSystemConfigs, KeyCode, Mesh, 
-    Mesh2d, OrthographicProjection, Query, Res, ResMut, Transform, With}, 
-    sprite::{ColorMaterial, MeshMaterial2d}, text::{Text2d, TextFont}, 
-    time::Time, window::{Window, WindowPlugin, WindowResolution}, DefaultPlugins};
+use bevy::{app::{App, PluginGroup, Startup, Update}, asset::Assets, color::Color, core_pipeline::bloom::Bloom, input::{mouse::MouseWheel, ButtonInput}, math::Vec3, prelude::{Annulus, BuildChildren, Camera, Camera2d, ChildBuild, Circle, Commands, Component, EventReader, IntoSystemConfigs, KeyCode, Mesh, Mesh2d, OrthographicProjection, Query, Res, ResMut, Text, Transform, With}, sprite::{ColorMaterial, MeshMaterial2d}, text::{Text2d, TextFont}, time::Time, ui::{AlignItems, FlexDirection, JustifyContent, Node, UiRect, Val}, window::{Window, WindowPlugin, WindowResolution}, DefaultPlugins};
 
 //TODO: Sync our real time to the game time
 
@@ -168,14 +161,22 @@ struct DateText;
 
 fn date_spawn_text(mut commands: Commands) {
     commands.spawn(
-    (
-        Text2d(format!("Date: {}\nTime: {}", get_current_date_and_time().0, get_current_date_and_time().1)),
-        Transform::from_xyz(-300.0, 200.0, 0.0),
+    (Node {
+        flex_direction: FlexDirection::Column,
+            justify_content: JustifyContent::SpaceBetween,
+            align_items: AlignItems::Start,
+            flex_grow: 1.,
+            margin: UiRect::axes(Val::Px(15.), Val::Px(5.)),
+            ..Default::default()
+    },
+        Text::new(format!("Date: {}\nTime: {}", get_current_date_and_time().0, get_current_date_and_time().1)),
         DateText
     ));
 }
 
-fn update_date_text(mut query: Query<&mut Text2d, With<DateText>>) {
+fn update_date_text(
+    mut query: Query<&mut Text, With<DateText>>
+) {
     for mut text in query.iter_mut() {
         text.0 = format!("Date: {}\nTime: {}", get_current_date_and_time().0, get_current_date_and_time().1);
     }
@@ -253,7 +254,11 @@ fn update_planets_position(
             continue;
         }
 
-        object.angle += object.speed * time.delta().as_secs_f32();
+        let seconds_in_a_day = 86400.0;
+        let real_time_seconds = time.elapsed_secs() as f32;
+        let game_time_seconds = real_time_seconds * object.speed / seconds_in_a_day;
+
+        object.angle += game_time_seconds;
         let x = object.angle.cos() * object.radius;
         let y = object.angle.sin() * object.radius;
         transform.translation = Vec3::new(x, y, 1.);
