@@ -13,9 +13,22 @@ fn main() {
             }),
             ..Default::default()
         }))
-        .add_systems(Startup, (spawn_camera, date_spawn_text, background, spawn_objects, spawn_orbits).chain())
-        .add_systems(Update, (update_date_text, input_keys, update_zoom_by_scroll, update_planets_position).chain())
+        .add_systems(Startup, (spawn_camera, date_spawn_text, spawn_earthdays_text, background, spawn_objects, spawn_orbits).chain())
+        .add_systems(Update, (update_date_text, update_earthdays_text, input_keys, update_zoom_by_scroll, update_planets_position).chain())
         .run();
+}
+
+#[derive(Component)]
+struct EarthTime {
+    years: isize
+}
+
+impl Default for EarthTime {
+    fn default() -> Self {
+        EarthTime {
+            years: 0
+        }
+    }
 }
 
 fn background(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<ColorMaterial>>) {
@@ -182,6 +195,30 @@ fn update_date_text(
     }
 }
 
+fn spawn_earthdays_text(mut commands: Commands) {
+    commands.spawn(
+        (Node {
+                flex_direction: FlexDirection::Column,
+                justify_content: JustifyContent::SpaceBetween,
+                align_items: AlignItems::Start,
+                position_type: bevy::ui::PositionType::Absolute,
+                flex_grow: 1.,
+                margin: UiRect::axes(Val::Px(15.), Val::Px(60.)),
+                ..Default::default()
+        },
+            Text::new(format!("Earth Days: {}", 0)),
+            EarthTime::default()
+        ));
+}
+
+fn update_earthdays_text(
+    mut query: Query<(&mut Text, &EarthTime), With<EarthTime>>
+) {
+    for (mut text, earth_time) in query.iter_mut() {
+        text.0 = format!("Earth's Years: {}", earth_time.years);
+    }
+}
+
 #[derive(Component)]
 struct Object {
     name: String,
@@ -246,7 +283,8 @@ fn update_zoom_by_scroll(
 
 fn update_planets_position(
     time: Res<Time>,
-    mut query: Query<(&mut Object, &mut Transform), With<Object>>
+    mut query: Query<(&mut Object, &mut Transform), With<Object>>,
+    mut query_earthtime: Query<&mut EarthTime, With<EarthTime>>
 ) {
 
     for (mut object, mut transform) in query.iter_mut() {
@@ -264,6 +302,11 @@ fn update_planets_position(
         transform.translation = Vec3::new(x, y, 1.);
     }
    
+    for mut earthtime in query_earthtime.iter_mut() {
+        if time.elapsed_secs() % 86400. == 0. {
+            earthtime.years += 1;
+        }
+    }
 }
 
 fn spawn_orbits(
