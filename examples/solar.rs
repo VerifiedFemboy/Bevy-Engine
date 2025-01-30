@@ -300,13 +300,15 @@ fn update_planets_position(
         let x = object.angle.cos() * object.radius;
         let y = object.angle.sin() * object.radius;
         transform.translation = Vec3::new(x, y, 1.);
-    }
-   
-    for mut earthtime in query_earthtime.iter_mut() {
-        if time.elapsed_secs() % 86400. == 0. {
-            earthtime.years += 1;
+
+        if object.name == "Earth" {
+            let earth_time = &mut query_earthtime.single_mut();
+            if real_time_seconds % seconds_in_a_day == 0. {
+                earth_time.years += 1;
+            }
         }
     }
+   
 }
 
 fn spawn_orbits(
