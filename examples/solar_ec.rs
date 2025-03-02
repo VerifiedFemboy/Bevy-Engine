@@ -1,12 +1,12 @@
 use std::f32::consts::FRAC_PI_2;
 
-use bevy::{app::{App, PluginGroup, Startup, Update}, 
-asset::Assets, color::{Color, LinearRgba}, core_pipeline::{bloom::Bloom, core_3d::Camera3d, tonemapping::Tonemapping}, 
+use bevy::{app::{App, PluginGroup, Startup, Update}, asset::Assets, color::{Color, LinearRgba}, 
+core_pipeline::{bloom::Bloom, core_3d::Camera3d, tonemapping::Tonemapping}, 
 ecs::{component::Component, query::With, schedule::IntoSystemConfigs, system::{Commands, Query, Res, ResMut}}, 
 input::mouse::AccumulatedMouseMotion, math::{primitives::Sphere, EulerRot, Quat, Vec2, Vec3}, 
 pbr::{MeshMaterial3d, StandardMaterial}, render::{camera::{Camera, ClearColor}, mesh::{Mesh, Mesh3d}}, 
 transform::components::Transform, ui::{widget::Text, AlignItems, JustifyContent, Node, UiRect, Val}, 
-window::{Window, WindowPlugin}, DefaultPlugins};
+window::{CursorGrabMode, PrimaryWindow, Window, WindowPlugin}, DefaultPlugins};
 
 fn main() {
     App::new()
@@ -19,7 +19,7 @@ fn main() {
         }),
         ..Default::default()
     }))
-    .add_systems(Startup, (spawn_camera, spawn_star, spawn_planets, spawn_hud).chain())
+    .add_systems(Startup, (lock_cursor, spawn_camera, spawn_star, spawn_planets, spawn_hud).chain())
     .add_systems(Update, rotate_camera)
     .run();
 }
@@ -157,7 +157,16 @@ fn spawn_camera(mut commands: Commands) {
     bloom));
 }
 
-//TODO: Lock cursor to center of screen when rotating camera
+fn lock_cursor(
+    mut query: Query<&mut Window, With<PrimaryWindow>>
+) {
+    let mut window = query.single_mut();
+
+    window.cursor_options.grab_mode = CursorGrabMode::Locked;
+    window.cursor_options.visible = false;
+}
+
+//TODO: Lock pointer to center of screen when rotating camera
 fn rotate_camera(
     mouse_motion: Res<AccumulatedMouseMotion>,
     mut query: Query<&mut Transform, With<Camera3d>>
