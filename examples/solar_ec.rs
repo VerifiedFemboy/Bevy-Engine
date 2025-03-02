@@ -1,4 +1,12 @@
-use bevy::{app::{App, PluginGroup, Startup, Update}, asset::Assets, color::{Color, LinearRgba}, core_pipeline::{bloom::Bloom, core_3d::Camera3d, tonemapping::Tonemapping}, ecs::{component::Component, query::{self, With}, schedule::IntoSystemConfigs, system::{Commands, Query, Res, ResMut}}, input::{keyboard::KeyCode, ButtonInput}, math::{primitives::Sphere, Quat, Vec3}, pbr::{MeshMaterial3d, StandardMaterial}, render::{camera::{Camera, ClearColor}, mesh::{Mesh, Mesh3d}}, transform::components::Transform, ui::{widget::Text, AlignItems, JustifyContent, Node, UiRect, Val}, window::{Window, WindowPlugin}, DefaultPlugins};
+use std::f32::consts::FRAC_PI_2;
+
+use bevy::{app::{App, PluginGroup, Startup, Update}, 
+asset::Assets, color::{Color, LinearRgba}, core_pipeline::{bloom::Bloom, core_3d::Camera3d, tonemapping::Tonemapping}, 
+ecs::{component::Component, query::With, schedule::IntoSystemConfigs, system::{Commands, Query, Res, ResMut}}, 
+input::mouse::AccumulatedMouseMotion, math::{primitives::Sphere, EulerRot, Quat, Vec2, Vec3}, 
+pbr::{MeshMaterial3d, StandardMaterial}, render::{camera::{Camera, ClearColor}, mesh::{Mesh, Mesh3d}}, 
+transform::components::Transform, ui::{widget::Text, AlignItems, JustifyContent, Node, UiRect, Val}, 
+window::{Window, WindowPlugin}, DefaultPlugins};
 
 fn main() {
     App::new()
@@ -53,7 +61,11 @@ fn spawn_star(
     ));
 }
 
-fn spawn_planets(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
+fn spawn_planets(
+    mut commands: Commands, 
+    mut meshes: ResMut<Assets<Mesh>>, 
+    mut materials: ResMut<Assets<StandardMaterial>>
+) {
     let planets = vec![
         CelestialBody {
             body: CelestialBodyType::Planet("Mercury".to_string()),
@@ -139,62 +151,32 @@ fn spawn_camera(mut commands: Commands) {
         hdr: true,
         ..Default::default()
     },
-    Direction::default(),
     Tonemapping::TonyMcMapface,
     Transform::default().with_translation(Vec3::new(50., 0., 0.))
     .looking_at(Vec3::ZERO, Vec3::Y),
     bloom));
 }
 
+//TODO: Lock cursor to center of screen when rotating camera
 fn rotate_camera(
-    input: Res<ButtonInput<KeyCode>>, 
-    mut camera_query: Query<(&mut Transform, &mut Direction), With<Camera>>,
-    mut text_query: Query<&mut Text, With<DirectionText>>
+    mouse_motion: Res<AccumulatedMouseMotion>,
+    mut query: Query<&mut Transform, With<Camera3d>>
 ) {
-    for mut query in camera_query.iter_mut() {
-        let transform = &mut query.0;
-        if input.pressed(KeyCode::ArrowLeft) {
-            transform.rotate(Quat::from_rotation_y(0.03));
-        }
-        if input.pressed(KeyCode::ArrowRight) {
-            transform.rotate(Quat::from_rotation_y(-0.03));
-        }
+    let mut camera_transform = query.single_mut();
 
-        // let direction = &mut query.1;
-        
-        // let rotation = transform.rotation;
+    let delta = mouse_motion.delta;
 
-        // TODO: Direction rotation update
-    }
+    if delta != Vec2::ZERO {
+        let delta_yaw = -delta.x * 0.002;
+        let delta_pitch = -delta.y * 0.002;
 
-    let text_mut = &mut text_query.single_mut();
+        let (yaw, pitch, roll) = camera_transform.rotation.to_euler(EulerRot::YXZ);
 
-    text_mut.0 = format!("Direction: {:?}", camera_query.single().1);
+        let yaw = yaw + delta_yaw;
+        const PITCH_LIMIT: f32 = FRAC_PI_2 - 0.01;
+        let pitch = (pitch + delta_pitch).clamp(-PITCH_LIMIT, PITCH_LIMIT);
 
-    // CURRENT ROTATION DIRECTION
-}
-
-fn movement_camera(
-    input: Res<ButtonInput<KeyCode>>,
-    mut query: Query<&mut Transform, With<Camera>>
-) {
-    // DIRECTION
-
-}
-
-#[derive(Component, Debug)]
-enum Direction {
-    NORTH,
-    NORTHWEST,
-    NORTHEAST,
-    SOUTH,
-    SOUTHWEST,
-    SOUTHEAST,
-}
-
-impl Default for Direction {
-    fn default() -> Self {
-        Self::NORTH
+        camera_transform.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, roll);
     }
 }
 
