@@ -3,7 +3,7 @@ use std::f32::consts::FRAC_PI_2;
 use bevy::{app::{App, PluginGroup, Startup, Update}, asset::Assets, color::{Color, LinearRgba}, 
 core_pipeline::{bloom::Bloom, core_3d::Camera3d, tonemapping::Tonemapping}, 
 ecs::{component::Component, query::With, schedule::IntoSystemConfigs, system::{Commands, Query, Res, ResMut}}, 
-input::mouse::AccumulatedMouseMotion, math::{primitives::Sphere, EulerRot, Quat, Vec2, Vec3}, 
+input::{keyboard::KeyCode, mouse::AccumulatedMouseMotion, ButtonInput}, math::{primitives::Sphere, EulerRot, Quat, Vec2, Vec3}, 
 pbr::{MeshMaterial3d, StandardMaterial}, render::{camera::{Camera, ClearColor}, mesh::{Mesh, Mesh3d}}, 
 transform::components::Transform, ui::{widget::Text, AlignItems, JustifyContent, Node, UiRect, Val}, 
 window::{CursorGrabMode, PrimaryWindow, Window, WindowPlugin}, DefaultPlugins};
@@ -20,7 +20,7 @@ fn main() {
         ..Default::default()
     }))
     .add_systems(Startup, (lock_cursor, spawn_camera, spawn_star, spawn_planets, spawn_hud).chain())
-    .add_systems(Update, rotate_camera)
+    .add_systems(Update, (update_hud, rotate_camera, move_camera).chain())
     .run();
 }
 
@@ -163,7 +163,7 @@ fn lock_cursor(
     let mut window = query.single_mut();
 
     window.cursor_options.grab_mode = CursorGrabMode::Locked;
-    window.cursor_options.visible = false;
+    // window.cursor_options.visible = false;
 }
 
 //TODO: Lock pointer to center of screen when rotating camera
@@ -189,11 +189,37 @@ fn rotate_camera(
     }
 }
 
+fn move_camera(
+    keycode: Res<ButtonInput<KeyCode>>,
+    mut query: Query<&mut Transform, With<Camera3d>>
+) {
+    let mut camera_transform = query.single_mut();
+
+    // direction by rotation
+    let forward = camera_transform.rotation.mul_vec3(Vec3::Z);
+    let right = camera_transform.rotation.mul_vec3(Vec3::X);
+    
+    let speed = speed_up_by_lshift(&keycode);
+    
+    if keycode.pressed(KeyCode::KeyW) {
+        camera_transform.translation -= forward * speed;
+    }
+    if keycode.pressed(KeyCode::KeyS) {
+        camera_transform.translation += forward * speed;
+    }
+    if keycode.pressed(KeyCode::KeyA) {
+        camera_transform.translation -= right * speed;
+    }
+    if keycode.pressed(KeyCode::KeyD) {
+        camera_transform.translation += right * speed;
+    }
+}
+
 #[derive(Component)]
-struct DirectionText;
+struct DistanceFromSunText;
 
 fn spawn_hud(mut commands: Commands) {
-    commands.spawn((Text("Direction: ".to_string()), 
+    commands.spawn((Text("Distance from Sun: ".to_string()), 
     Node {
         justify_content: JustifyContent::SpaceBetween,
         align_items: AlignItems::Start,
@@ -201,5 +227,33 @@ fn spawn_hud(mut commands: Commands) {
         margin: UiRect::axes(Val::Px(15.), Val::Px(5.)),
         ..Default::default()
     },
-    DirectionText));
+    DistanceFromSunText));
+}
+
+fn update_hud(
+    mut query: Query<&mut Text, With<DistanceFromSunText>>,
+    celestial_bodies: Query<&CelestialBody>,
+    camera: Query<&Transform, With<Camera3d>>,
+) {
+    let camera_transform = camera.single();
+    let camera_position = camera_transform.translation;
+
+    for mut text in query.iter_mut() {
+        for body in celestial_bodies.iter() {
+            if let CelestialBodyType::Planet(name) = &body.body {
+                if name == "Earth" {
+                    let distance = (camera_position - body.position).length();
+                    text.0 = format!("Distance from Sun: {:.2}", distance); // TODO: Add units to distance
+                }
+            }
+        }
+    }
+}
+
+fn speed_up_by_lshift(keycode: &Res<ButtonInput<KeyCode>>) -> f32 {
+    if keycode.pressed(KeyCode::ShiftLeft) {
+        return 0.5;
+    } else {
+        return 0.1;
+    }
 }
