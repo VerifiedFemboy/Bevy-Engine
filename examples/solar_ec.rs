@@ -1,12 +1,6 @@
 use std::f32::consts::FRAC_PI_2;
 
-use bevy::{app::{App, PluginGroup, Startup, Update}, asset::Assets, color::{Color, LinearRgba}, 
-core_pipeline::{bloom::Bloom, core_3d::Camera3d, tonemapping::Tonemapping}, 
-ecs::{component::Component, query::With, schedule::IntoSystemConfigs, system::{Commands, Query, Res, ResMut}}, 
-input::{keyboard::KeyCode, mouse::AccumulatedMouseMotion, ButtonInput}, math::{primitives::Sphere, EulerRot, Quat, Vec2, Vec3}, 
-pbr::{MeshMaterial3d, StandardMaterial}, render::{camera::{Camera, ClearColor}, mesh::{Mesh, Mesh3d}}, 
-transform::components::Transform, ui::{widget::Text, AlignItems, JustifyContent, Node, UiRect, Val}, 
-window::{CursorGrabMode, PrimaryWindow, Window, WindowPlugin}, DefaultPlugins};
+use bevy::{app::{App, PluginGroup, Startup, Update}, asset::Assets, color::{Color, LinearRgba}, core_pipeline::{bloom::Bloom, core_3d::Camera3d, tonemapping::Tonemapping}, ecs::{component::Component, entity::Entity, query::With, schedule::IntoSystemConfigs, system::{Commands, Query, Res, ResMut}}, hierarchy::DespawnRecursiveExt, input::{keyboard::KeyCode, mouse::AccumulatedMouseMotion, ButtonInput}, math::{primitives::Sphere, EulerRot, Quat, Vec2, Vec3}, pbr::{MeshMaterial3d, StandardMaterial}, render::{camera::{Camera, ClearColor}, mesh::{Mesh, Mesh3d}}, transform::components::Transform, ui::{widget::{Text, TextBundle}, AlignItems, JustifyContent, Node, UiRect, Val}, window::{CursorGrabMode, PrimaryWindow, Window, WindowPlugin}, DefaultPlugins};
 
 fn main() {
     App::new()
@@ -20,7 +14,7 @@ fn main() {
         ..Default::default()
     }))
     .add_systems(Startup, (lock_cursor, spawn_camera, spawn_star, spawn_planets, spawn_hud).chain())
-    .add_systems(Update, (update_hud, rotate_camera, move_camera).chain())
+    .add_systems(Update, (update_hud, rotate_camera, input_keys).chain())
     .run();
 }
 
@@ -72,28 +66,28 @@ fn spawn_planets(
             position: Vec3::new(100., 0., 0.),
             velocity: Vec3::ZERO,
             acceleration: Vec3::ZERO,
-            color: Some(LinearRgba::new(0.5, 0.5, 0.5, 1.0)),
+            color: Some(LinearRgba::new(0.5, 0.5, 0.5, 0.7)),
         },
         CelestialBody {
             body: CelestialBodyType::Planet("Venus".to_string()),
             position: Vec3::new(200., 0., 0.),
             velocity: Vec3::ZERO,
             acceleration: Vec3::ZERO,
-            color: Some(LinearRgba::new(0.5, 0.5, 0.5, 1.0)),
+            color: Some(LinearRgba::new(0.1, 0.1, 0.5, 0.7)),
         },
         CelestialBody {
             body: CelestialBodyType::Planet("Earth".to_string()),
             position: Vec3::new(300., 0., 0.),
             velocity: Vec3::ZERO,
             acceleration: Vec3::ZERO,
-            color: Some(LinearRgba::new(0.5, 0.5, 0.5, 1.0)),
+            color: Some(LinearRgba::new(0.1, 0.2, 0.5, 1.0)),
         },
         CelestialBody {
             body: CelestialBodyType::Planet("Mars".to_string()),
             position: Vec3::new(400., 0., 0.),
             velocity: Vec3::ZERO,
             acceleration: Vec3::ZERO,
-            color: Some(LinearRgba::new(0.5, 0.5, 0.5, 1.0)),
+            color: Some(LinearRgba::new(0.5, 0.3, 0.0, 1.0)),
         },
         CelestialBody {
             body: CelestialBodyType::Planet("Jupiter".to_string()),
@@ -137,7 +131,17 @@ fn spawn_planets(
             Transform::default().with_translation(planet_clone.position),
         ));
     }
-    
+}
+
+#[derive(Component)]
+struct CameraPlayer {
+    paused: bool,
+}
+
+impl Default for CameraPlayer {
+    fn default() -> Self {
+        Self { paused: false }
+    }
 }
 
 fn spawn_camera(mut commands: Commands) {
@@ -151,19 +155,28 @@ fn spawn_camera(mut commands: Commands) {
         hdr: true,
         ..Default::default()
     },
+    CameraPlayer::default(),
     Tonemapping::TonyMcMapface,
     Transform::default().with_translation(Vec3::new(50., 0., 0.))
     .looking_at(Vec3::ZERO, Vec3::Y),
     bloom));
 }
 
+//TODO: Fix panic 
 fn lock_cursor(
-    mut query: Query<&mut Window, With<PrimaryWindow>>
+    mut window_query: Query<&mut Window, With<PrimaryWindow>>,
+    player_query: Query<&CameraPlayer, With<Camera3d>>,
 ) {
-    let mut window = query.single_mut();
+    let mut window = window_query.single_mut();
 
-    window.cursor_options.grab_mode = CursorGrabMode::Locked;
-    // window.cursor_options.visible = false;
+    let player_camera = player_query.single();
+    if player_camera.paused {
+        window.cursor_options.grab_mode = CursorGrabMode::Locked;
+        window.cursor_options.visible = false;
+    } else {
+        window.cursor_options.grab_mode = CursorGrabMode::None;
+        window.cursor_options.visible = true;
+    }
 }
 
 //TODO: Lock pointer to center of screen when rotating camera
@@ -189,13 +202,31 @@ fn rotate_camera(
     }
 }
 
-fn move_camera(
+fn input_keys(
     keycode: Res<ButtonInput<KeyCode>>,
-    mut query: Query<&mut Transform, With<Camera3d>>
+    mut camera_query: Query<(&mut Transform, &CameraPlayer), With<Camera3d>>,
+    mut commands: Commands,
+    pause_menu_query: Query<Entity, With<PauseMenu>>,
 ) {
-    let mut camera_transform = query.single_mut();
-
+    if !pause_menu_query.is_empty() {
+        if keycode.just_pressed(KeyCode::Escape) {
+            let entity = pause_menu_query.single();
+            commands.entity(entity).despawn_recursive();
+        }
+    } else {
+        if keycode.just_pressed(KeyCode::Escape) {
+            spawn_pause_menu(commands);
+        }
+    }
+    
+    // if is paused, then lock camera movement and rotation
+    let camera_player = camera_query.single_mut().1;
+    if camera_player.paused {
+        return;
+    }
+    
     // direction by rotation
+    let mut camera_transform = camera_query.single_mut().0;
     let forward = camera_transform.rotation.mul_vec3(Vec3::Z);
     let right = camera_transform.rotation.mul_vec3(Vec3::X);
     
@@ -238,13 +269,12 @@ fn update_hud(
     let camera_transform = camera.single();
     let camera_position = camera_transform.translation;
 
-    for mut text in query.iter_mut() {
-        for body in celestial_bodies.iter() {
-            if let CelestialBodyType::Planet(name) = &body.body {
-                if name == "Earth" {
-                    let distance = (camera_position - body.position).length();
-                    text.0 = format!("Distance from Sun: {:.2}", distance); // TODO: Add units to distance
-                }
+    let mut text = query.single_mut();
+    for body in celestial_bodies.iter() {
+        if let CelestialBodyType::Star(name) = &body.body {
+            if name == "Sun" {
+                let distance = (camera_position - body.position).length();
+                text.0 = format!("Distance from Sun: {:.2}", distance); // TODO: Add units to distance
             }
         }
     }
@@ -256,4 +286,21 @@ fn speed_up_by_lshift(keycode: &Res<ButtonInput<KeyCode>>) -> f32 {
     } else {
         return 0.1;
     }
+}
+
+#[derive(Component)]
+struct PauseMenu;
+
+fn spawn_pause_menu(mut commands: Commands) {
+    commands.spawn((
+        Text("Pause Menu".to_string()),
+        Node {
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            flex_grow: 1.,
+            margin: UiRect::all(Val::Px(15.)),
+            ..Default::default()
+        },
+        PauseMenu,
+    ));
 }
