@@ -1,6 +1,13 @@
 use std::f32::consts::FRAC_PI_2;
 
-use bevy::{app::{App, PluginGroup, Startup, Update}, asset::Assets, color::{Color, LinearRgba}, core_pipeline::{bloom::Bloom, core_3d::Camera3d, tonemapping::Tonemapping}, ecs::{component::Component, entity::Entity, query::With, schedule::IntoSystemConfigs, system::{Commands, Query, Res, ResMut}}, hierarchy::DespawnRecursiveExt, input::{keyboard::KeyCode, mouse::AccumulatedMouseMotion, ButtonInput}, math::{primitives::Sphere, EulerRot, Quat, Vec2, Vec3}, pbr::{MeshMaterial3d, StandardMaterial}, render::{camera::{Camera, ClearColor}, mesh::{Mesh, Mesh3d}}, transform::components::Transform, ui::{widget::{Text, TextBundle}, AlignItems, JustifyContent, Node, UiRect, Val}, window::{CursorGrabMode, PrimaryWindow, Window, WindowPlugin}, DefaultPlugins};
+use bevy::{app::{App, PluginGroup, Startup, Update}, asset::Assets, color::{Color, LinearRgba}, 
+    core_pipeline::{bloom::Bloom, core_3d::Camera3d, tonemapping::Tonemapping}, ecs::{component::Component, entity::Entity, query::With, 
+        schedule::IntoSystemConfigs, system::{Commands, Query, Res, ResMut, Single}}, 
+    hierarchy::DespawnRecursiveExt, input::{keyboard::KeyCode, mouse::AccumulatedMouseMotion, ButtonInput}, 
+    math::{primitives::Sphere, EulerRot, Quat, Vec2, Vec3}, pbr::{MeshMaterial3d, StandardMaterial}, 
+    render::{camera::{Camera, ClearColor}, mesh::{Mesh, Mesh3d}}, text::TextFont, transform::components::Transform, 
+    ui::{widget::Text, AlignItems, JustifyContent, Node, UiRect, Val}, 
+    window::{CursorGrabMode, MonitorSelection, PrimaryWindow, Window, WindowMode, WindowPlugin}, DefaultPlugins};
 
 fn main() {
     App::new()
@@ -9,12 +16,13 @@ fn main() {
     WindowPlugin {
         primary_window: Some(Window {
             title: "Solar Ecliptic".to_string(),
+            mode: WindowMode::SizedFullscreen(MonitorSelection::Primary),
             ..Default::default()
         }),
         ..Default::default()
     }))
-    .add_systems(Startup, (lock_cursor, spawn_camera, spawn_star, spawn_planets, spawn_hud).chain())
-    .add_systems(Update, (update_hud, rotate_camera, input_keys).chain())
+    .add_systems(Startup, (spawn_camera, spawn_star, spawn_planets, spawn_hud).chain())
+    .add_systems(Update, (lock_cursor, update_hud, rotate_camera, input_keys).chain())
     .run();
 }
 
@@ -162,29 +170,32 @@ fn spawn_camera(mut commands: Commands) {
     bloom));
 }
 
-//TODO: Fix panic 
 fn lock_cursor(
-    mut window_query: Query<&mut Window, With<PrimaryWindow>>,
-    player_query: Query<&CameraPlayer, With<Camera3d>>,
+    window_query: Single<&mut Window, With<PrimaryWindow>>,
+    camera_query: Single<&CameraPlayer>
 ) {
-    let mut window = window_query.single_mut();
-
-    let player_camera = player_query.single();
-    if player_camera.paused {
-        window.cursor_options.grab_mode = CursorGrabMode::Locked;
-        window.cursor_options.visible = false;
-    } else {
+    let mut window = window_query;
+    
+    if camera_query.paused {
         window.cursor_options.grab_mode = CursorGrabMode::None;
         window.cursor_options.visible = true;
+    } else {
+        window.cursor_options.grab_mode = CursorGrabMode::Locked;
+        window.cursor_options.visible = false;
     }
 }
 
-//TODO: Lock pointer to center of screen when rotating camera
 fn rotate_camera(
     mouse_motion: Res<AccumulatedMouseMotion>,
-    mut query: Query<&mut Transform, With<Camera3d>>
+    mut query: Query<(&mut Transform, &CameraPlayer), With<Camera3d>>
 ) {
-    let mut camera_transform = query.single_mut();
+    let camera_player = query.single_mut().1;
+    
+    if camera_player.paused {
+        return;
+    }
+    
+    let mut camera_transform = query.single_mut().0;
 
     let delta = mouse_motion.delta;
 
@@ -204,7 +215,7 @@ fn rotate_camera(
 
 fn input_keys(
     keycode: Res<ButtonInput<KeyCode>>,
-    mut camera_query: Query<(&mut Transform, &CameraPlayer), With<Camera3d>>,
+    mut camera_query: Query<(&mut Transform, &mut CameraPlayer), With<Camera3d>>,
     mut commands: Commands,
     pause_menu_query: Query<Entity, With<PauseMenu>>,
 ) {
@@ -212,15 +223,17 @@ fn input_keys(
         if keycode.just_pressed(KeyCode::Escape) {
             let entity = pause_menu_query.single();
             commands.entity(entity).despawn_recursive();
+            camera_query.single_mut().1.paused = false;
         }
     } else {
         if keycode.just_pressed(KeyCode::Escape) {
             spawn_pause_menu(commands);
+            camera_query.single_mut().1.paused = true;
         }
     }
     
     // if is paused, then lock camera movement and rotation
-    let camera_player = camera_query.single_mut().1;
+    let camera_player = camera_query.single().1;
     if camera_player.paused {
         return;
     }
@@ -293,12 +306,16 @@ struct PauseMenu;
 
 fn spawn_pause_menu(mut commands: Commands) {
     commands.spawn((
-        Text("Pause Menu".to_string()),
+        Text("PAUSED".to_string()),
         Node {
             justify_content: JustifyContent::Center,
             align_items: AlignItems::Center,
             flex_grow: 1.,
             margin: UiRect::all(Val::Px(15.)),
+            ..Default::default()
+        },
+        TextFont {
+            font_size: 24.0,
             ..Default::default()
         },
         PauseMenu,
