@@ -1,18 +1,12 @@
 use std::f32::consts::FRAC_PI_2;
 
-use bevy::{app::{App, PluginGroup, Startup, Update}, asset::Assets, color::{Color, LinearRgba}, 
-    core_pipeline::{bloom::Bloom, core_3d::Camera3d, tonemapping::Tonemapping}, ecs::{component::Component, entity::Entity, query::With, 
-        schedule::IntoSystemConfigs, system::{Commands, Query, Res, ResMut, Single}}, 
-    hierarchy::DespawnRecursiveExt, input::{keyboard::KeyCode, mouse::AccumulatedMouseMotion, ButtonInput}, 
-    math::{primitives::Sphere, EulerRot, Quat, Vec2, Vec3}, pbr::{MeshMaterial3d, StandardMaterial}, 
-    render::{camera::{Camera, ClearColor}, mesh::{Mesh, Mesh3d}}, text::TextFont, transform::components::Transform, 
-    ui::{widget::Text, AlignItems, JustifyContent, Node, UiRect, Val}, 
-    window::{CursorGrabMode, MonitorSelection, PrimaryWindow, Window, WindowMode, WindowPlugin}, DefaultPlugins};
+use bevy::{app::{App, PluginGroup, Startup, Update}, asset::Assets, color::{Color, LinearRgba}, core_pipeline::{bloom::Bloom, core_3d::Camera3d, tonemapping::Tonemapping}, diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, ecs::{component::Component, entity::Entity, query::{With, Without}, 
+        schedule::IntoSystemConfigs, system::{Commands, Query, Res, ResMut, Single}}, hierarchy::DespawnRecursiveExt, input::{keyboard::KeyCode, mouse::AccumulatedMouseMotion, ButtonInput}, math::{primitives::Sphere, EulerRot, Quat, Vec2, Vec3}, pbr::{MeshMaterial3d, StandardMaterial}, render::{camera::{Camera, ClearColor}, mesh::{Mesh, Mesh3d}}, text::TextFont, transform::components::Transform, ui::{widget::Text, AlignItems, JustifyContent, Node, PositionType, UiRect, Val}, window::{CursorGrabMode, MonitorSelection, PrimaryWindow, Window, WindowMode, WindowPlugin}, DefaultPlugins};
 
 fn main() {
     App::new()
     .insert_resource(ClearColor(Color::BLACK))
-    .add_plugins(DefaultPlugins::set(DefaultPlugins, 
+    .add_plugins((DefaultPlugins::set(DefaultPlugins, 
     WindowPlugin {
         primary_window: Some(Window {
             title: "Solar Ecliptic".to_string(),
@@ -20,9 +14,9 @@ fn main() {
             ..Default::default()
         }),
         ..Default::default()
-    }))
+    }), FrameTimeDiagnosticsPlugin))
     .add_systems(Startup, (spawn_camera, spawn_star, spawn_planets, spawn_hud).chain())
-    .add_systems(Update, (lock_cursor, update_hud, rotate_camera, input_keys).chain())
+    .add_systems(Update, (lock_cursor, update_hud, rotate_camera, input_keys))
     .run();
 }
 
@@ -262,6 +256,9 @@ fn input_keys(
 #[derive(Component)]
 struct DistanceFromSunText;
 
+#[derive(Component)]
+struct FpsText;
+
 fn spawn_hud(mut commands: Commands) {
     commands.spawn((Text("Distance from Sun: ".to_string()), 
     Node {
@@ -272,23 +269,45 @@ fn spawn_hud(mut commands: Commands) {
         ..Default::default()
     },
     DistanceFromSunText));
+    
+    commands.spawn((Text("FPS: ".to_string()),
+    Node {
+        justify_content: JustifyContent::SpaceBetween,
+        align_items: AlignItems::Start,
+        flex_grow: 2.,
+        margin: UiRect::axes(Val::Px(15.), Val::Px(5.)),
+        position_type: PositionType::Absolute,
+        top: Val::Px(5.0),
+        right: Val::Px(5.0),
+        ..Default::default()
+    },
+    FpsText));
 }
 
 fn update_hud(
-    mut query: Query<&mut Text, With<DistanceFromSunText>>,
+    mut distance_query: Query<&mut Text, (With<DistanceFromSunText>, Without<FpsText>)>,
     celestial_bodies: Query<&CelestialBody>,
     camera: Query<&Transform, With<Camera3d>>,
+    mut fps_query: Query<&mut Text, With<FpsText>>,
+    diagnostic: Res<DiagnosticsStore>
 ) {
     let camera_transform = camera.single();
     let camera_position = camera_transform.translation;
 
-    let mut text = query.single_mut();
+    let mut distance_text = distance_query.single_mut();
     for body in celestial_bodies.iter() {
         if let CelestialBodyType::Star(name) = &body.body {
             if name == "Sun" {
                 let distance = (camera_position - body.position).length();
-                text.0 = format!("Distance from Sun: {:.2}", distance); // TODO: Add units to distance
+                distance_text.0 = format!("Distance from Sun: {:.2}", distance); // TODO: Add units to distance
             }
+        }
+    }
+    
+    let mut fps_text = fps_query.single_mut();
+    if let Some(fps) = diagnostic.get(&FrameTimeDiagnosticsPlugin::FPS) {
+        if let Some(val) = fps.smoothed() {
+            fps_text.0 = format!("FPS: {val:.0}");
         }
     }
 }
