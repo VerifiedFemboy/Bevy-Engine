@@ -1,7 +1,9 @@
 use std::f32::consts::FRAC_PI_2;
 
 use bevy::{app::{App, PluginGroup, Startup, Update}, asset::Assets, color::{Color, LinearRgba}, core_pipeline::{bloom::Bloom, core_3d::Camera3d, tonemapping::Tonemapping}, diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, ecs::{component::Component, entity::Entity, query::{With, Without}, 
-        schedule::IntoSystemConfigs, system::{Commands, Query, Res, ResMut, Single}}, hierarchy::DespawnRecursiveExt, input::{keyboard::KeyCode, mouse::AccumulatedMouseMotion, ButtonInput}, math::{primitives::Sphere, EulerRot, Quat, Vec2, Vec3}, pbr::{MeshMaterial3d, StandardMaterial}, render::{camera::{Camera, ClearColor}, mesh::{Mesh, Mesh3d}}, text::TextFont, transform::components::Transform, ui::{widget::Text, AlignItems, JustifyContent, Node, PositionType, UiRect, Val}, window::{CursorGrabMode, MonitorSelection, PrimaryWindow, Window, WindowMode, WindowPlugin}, DefaultPlugins};
+        schedule::IntoSystemConfigs, system::{Commands, Query, Res, ResMut, Single}}, hierarchy::DespawnRecursiveExt, input::{keyboard::KeyCode, mouse::AccumulatedMouseMotion, ButtonInput}, math::{primitives::Sphere, EulerRot, Quat, Vec2, Vec3}, pbr::{MeshMaterial3d, StandardMaterial}, render::{camera::{Camera, ClearColor}, mesh::{Mesh, Mesh3d}}, text::{cosmic_text::rustybuzz::shape, TextFont}, transform::components::Transform, ui::{widget::Text, AlignItems, JustifyContent, Node, PositionType, UiRect, Val}, window::{CursorGrabMode, MonitorSelection, PrimaryWindow, Window, WindowMode, WindowPlugin}, DefaultPlugins};
+
+const GRAVITATNIONAL_CONSTANT: f32 = 6.67430e-11; // m^3 kg^-1 s^-2
 
 fn main() {
     App::new()
@@ -15,7 +17,7 @@ fn main() {
         }),
         ..Default::default()
     }), FrameTimeDiagnosticsPlugin))
-    .add_systems(Startup, (spawn_camera, spawn_star, spawn_planets, spawn_hud).chain())
+    .add_systems(Startup, (spawn_camera, spawn_star, spawn_planets, spawn_hud, render_vectors_x_y_z).chain())
     .add_systems(Update, (lock_cursor, update_hud, rotate_camera, input_keys))
     .run();
 }
@@ -27,6 +29,7 @@ struct CelestialBody {
     velocity: Vec3,
     acceleration: Vec3,
     color: Option<LinearRgba>,
+    mass: f32,
 }
 
 #[derive(Clone)]
@@ -52,6 +55,7 @@ fn spawn_star(
             velocity: Vec3::ZERO,
             acceleration: Vec3::ZERO,
             color: None,
+            mass: 1.989e30, // kg
         },
         Transform::default(),
     ));
@@ -69,6 +73,7 @@ fn spawn_planets(
             velocity: Vec3::ZERO,
             acceleration: Vec3::ZERO,
             color: Some(LinearRgba::new(0.5, 0.5, 0.5, 0.7)),
+            mass: 3.285e23, // kg
         },
         CelestialBody {
             body: CelestialBodyType::Planet("Venus".to_string()),
@@ -76,6 +81,7 @@ fn spawn_planets(
             velocity: Vec3::ZERO,
             acceleration: Vec3::ZERO,
             color: Some(LinearRgba::new(0.1, 0.1, 0.5, 0.7)),
+            mass: 4.867e24, // kg
         },
         CelestialBody {
             body: CelestialBodyType::Planet("Earth".to_string()),
@@ -83,6 +89,7 @@ fn spawn_planets(
             velocity: Vec3::ZERO,
             acceleration: Vec3::ZERO,
             color: Some(LinearRgba::new(0.1, 0.2, 0.5, 1.0)),
+            mass: 5.972e24, // kg
         },
         CelestialBody {
             body: CelestialBodyType::Planet("Mars".to_string()),
@@ -90,6 +97,7 @@ fn spawn_planets(
             velocity: Vec3::ZERO,
             acceleration: Vec3::ZERO,
             color: Some(LinearRgba::new(0.5, 0.3, 0.0, 1.0)),
+            mass: 6.417e23, // kg
         },
         CelestialBody {
             body: CelestialBodyType::Planet("Jupiter".to_string()),
@@ -97,6 +105,7 @@ fn spawn_planets(
             velocity: Vec3::ZERO,
             acceleration: Vec3::ZERO,
             color: Some(LinearRgba::new(0.5, 0.5, 0.5, 1.0)),
+            mass: 1.898e27, // kg
         },
         CelestialBody {
             body: CelestialBodyType::Planet("Saturn".to_string()),
@@ -104,6 +113,7 @@ fn spawn_planets(
             velocity: Vec3::ZERO,
             acceleration: Vec3::ZERO,
             color: Some(LinearRgba::new(0.5, 0.5, 0.5, 1.0)),
+            mass: 5.683e26, // kg
         },
         CelestialBody {
             body: CelestialBodyType::Planet("Uranus".to_string()),
@@ -111,6 +121,7 @@ fn spawn_planets(
             velocity: Vec3::ZERO,
             acceleration: Vec3::ZERO,
             color: Some(LinearRgba::new(0.5, 0.5, 0.5, 1.0)),
+            mass: 8.681e25, // kg
         },
         CelestialBody {
             body: CelestialBodyType::Planet("Neptune".to_string()),
@@ -118,6 +129,7 @@ fn spawn_planets(
             velocity: Vec3::ZERO,
             acceleration: Vec3::ZERO,
             color: Some(LinearRgba::new(0.5, 0.5, 0.5, 1.0)),
+            mass: 1.024e26, // kg
         },
     ];
 
@@ -339,4 +351,29 @@ fn spawn_pause_menu(mut commands: Commands) {
         },
         PauseMenu,
     ));
+}
+
+fn calcuate_gravity(gravitational_const: f32, body1: &CelestialBody, body2: &CelestialBody) -> Vec3 {
+    let distance = (body1.position - body2.position).length();
+    let force = (gravitational_const * body1.mass * body2.mass) / (distance * distance);
+    let direction = (body2.position - body1.position).normalize();
+    force * direction    
+}
+
+fn render_vectors_x_y_z(mut commands: Commands, 
+    mut meshes: ResMut<Assets<Mesh>>, 
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    celestial_bodies: Query<&CelestialBody>,
+) {
+    for body in celestial_bodies.iter() {
+        let force = calcuate_gravity(GRAVITATNIONAL_CONSTANT, &body, &body);
+        commands.spawn((
+            Mesh3d(meshes.add(Mesh::from(Sphere { radius: 1.}))),
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color: Color::srgb(1., 1., 1.),
+                ..Default::default()
+            })),
+            Transform::from_translation(body.position + force),
+        ));
+    }
 }
